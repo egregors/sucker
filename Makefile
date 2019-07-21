@@ -1,2 +1,5 @@
-test-only:
+test:
 	go test -v -count 1 -race -cover ./...
+
+bench:
+	go test -v -run Bench -bench=. ./...
