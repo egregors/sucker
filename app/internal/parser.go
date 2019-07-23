@@ -48,7 +48,6 @@ func (p *HtmlParser) GetLinks() []string {
 	return links
 }
 
-// GetLinks starts async parsing and return chan with files urls
 func (p *HtmlParser) getLinksChan() chan string {
 	// todo: pass context with timeout from outside
 	go p.parseAll(nil)
@@ -87,23 +86,37 @@ func (p *HtmlParser) parseAll(ctx context.Context) {
 }
 
 func (p *HtmlParser) parsePage(page string) error {
-	resp, err := http.Get(page)
+	doc, err := getHtmlDocument(page)
 	if err != nil {
-		return errors.New(fmt.Sprintf("[ERROR] can't get page: %v", err))
+		return errors.New(fmt.Sprintf("[ERROR] can't get page: %s becouse of: %v", page, err))
+	}
+	p.checkNode(doc, makeDomainName(page))
+	close(p.links)
+	return nil
+}
+
+func getHtmlDocument(pageUrl string) (*html.Node, error) {
+
+	resp, err := makeGetRequest(pageUrl)
+	if err != nil {
+		return nil, err
 	}
 
 	doc, err := html.Parse(resp.Body)
 	if err != nil {
-		return errors.New(fmt.Sprintf("[ERROR] can't parse page: %v", err))
+		return nil, errors.New(fmt.Sprintf("[ERROR] can't parse page: %v", err))
 	}
+	_ = resp.Body.Close()
 
-	p.checkNode(doc, makeDomainName(page))
-	defer close(p.links)
+	return doc, nil
+}
 
-	if err = resp.Body.Close(); err != nil {
-		return errors.New(fmt.Sprintf("[ERROR] can't close page: %v", err))
+func makeGetRequest(url string) (*http.Response, error) {
+	resp, err := http.Get(url)
+	if err != nil {
+		return nil, errors.New(fmt.Sprintf("[ERROR] can't get page: %v", err))
 	}
-	return nil
+	return resp, nil
 }
 
 func (p *HtmlParser) checkNode(n *html.Node, domain string) {
@@ -119,7 +132,6 @@ func (p *HtmlParser) checkNode(n *html.Node, domain string) {
 	}
 }
 
-// todo: don't like func name
 func (p *HtmlParser) isValidHref(href string) bool {
 	for _, e := range p.exts {
 		if strings.Contains(href, e) {
