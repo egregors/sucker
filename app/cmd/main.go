@@ -18,7 +18,9 @@ func main() {
 	}
 
 	log.Printf("Downloading for: %s", strings.Join(links, ", "))
-	// todo: pass urls into downloader interface
-	//	dl := Downloader(links)
-	//	err := dl.start()
+	dl := internal.NewDownloader(links, 5)
+	dl.DownloadAll()
+
+	// todo: add fancy output
+	log.Print("Done")
 }
