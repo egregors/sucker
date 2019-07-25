@@ -18,7 +18,7 @@ func main() {
 	}
 
 	log.Printf("Downloading for: %s", strings.Join(links, ", "))
-	dl := internal.NewDownloader(links, 5)
+	dl, _ := internal.NewDownloader(links, 5)
 	dl.DownloadAll()
 
 	// todo: add fancy output

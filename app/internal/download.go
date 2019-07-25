@@ -3,15 +3,25 @@ package internal
 import (
 	"context"
 	"log"
+	"os"
+	"path/filepath"
 	"sync"
 )
 
 // NewDownload create a downloader and setup the file chan from the links
-func NewDownloader(links []string, n int) Downloader {
-	d := Downloader{}
+func NewDownloader(links []string, workersCount int) (*Downloader, error) {
+	// todo: looks like i should move all this args into Opts struct, cause it
+	//  too many for func
+	d := &Downloader{}
+	// todo: crete folder for download
+	err := d.makeDir("")
+	if err != nil {
+		log.Printf("[ERROR] can't create folder: %v", err)
+		return nil, err
+	}
 	d.setQueueFromLinks(links)
-	d.setWorkersCount(n)
-	return d
+	d.setWorkersCount(workersCount)
+	return d, nil
 }
 
 type file struct {
@@ -32,6 +42,16 @@ func (d *Downloader) DownloadAll() {
 	wg.Wait()
 }
 
+func (d *Downloader) makeDir(path string) error {
+	if path == "" {
+		baseDir, _ := os.Getwd()
+		// todo: replace it by generic name or name from page for downloading
+		path = filepath.Join(baseDir, "sucker_downloads/")
+		log.Printf("current path: %v", path)
+	}
+	return os.MkdirAll(path, os.ModePerm)
+}
+
 func (d *Downloader) spawnWorkers(ctx context.Context, wg *sync.WaitGroup) {
 	for i := 0; i < d.workersCount; i++ {
 		wg.Add(1)
@@ -41,8 +61,9 @@ func (d *Downloader) spawnWorkers(ctx context.Context, wg *sync.WaitGroup) {
 
 func (d *Downloader) setQueueFromLinks(links []string) {
 	// todo: pass exts from outside
+	//  there i can got number of files links and use it for
+	//  UI representation (kind of progress bar I guess)
 	filesLinks := NewHtmlParser(links, nil).GetLinks()
-
 	d.queue = make(chan file)
 	go func() {
 		for _, l := range filesLinks {
