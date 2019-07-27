@@ -2,9 +2,12 @@ package internal
 
 import (
 	"context"
+	"io"
 	"log"
+	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 )
 
@@ -14,9 +17,9 @@ func NewDownloader(links []string, workersCount int) (*Downloader, error) {
 	//  too many for func
 	d := &Downloader{}
 	// todo: crete folder for download
-	err := d.makeDir("")
+	err := d.setDownloadDir()
 	if err != nil {
-		log.Printf("[ERROR] can't create folder: %v", err)
+		log.Printf("[ERROR] can't create dir: %v", err)
 		return nil, err
 	}
 	d.setQueueFromLinks(links)
@@ -25,13 +28,55 @@ func NewDownloader(links []string, workersCount int) (*Downloader, error) {
 }
 
 type file struct {
-	url        string
+	url, path  string
 	retryCount int
 }
 
+func (f *file) download() error {
+	f.retryCount++
+	resp, err := http.Get(f.url)
+	if err != nil {
+		return err
+	}
+
+	err = f.save(resp)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (f *file) save(resp *http.Response) error {
+	fileName := strings.Split(f.url, "/")
+
+	filePath := filepath.Join(f.path, fileName[len(fileName)-1])
+	file, err := os.Create(filePath)
+	if err != nil {
+		return err
+	}
+
+	if _, err := io.Copy(file, resp.Body); err != nil {
+		return err
+	}
+
+	err = resp.Body.Close()
+	if err != nil {
+		return err
+	}
+
+	err = file.Close()
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 type Downloader struct {
-	queue        chan file
-	workersCount int
+	queue                    chan file
+	retryLimit, workersCount int
+	downloadDir              string
 }
 
 // DownloadAll is spawn N workers and downloading all file from file chan
@@ -42,14 +87,15 @@ func (d *Downloader) DownloadAll() {
 	wg.Wait()
 }
 
-func (d *Downloader) makeDir(path string) error {
+func (d *Downloader) makeDir(path string) (string, error) {
 	if path == "" {
 		baseDir, _ := os.Getwd()
 		// todo: replace it by generic name or name from page for downloading
 		path = filepath.Join(baseDir, "sucker_downloads/")
 		log.Printf("current path: %v", path)
 	}
-	return os.MkdirAll(path, os.ModePerm)
+	err := os.MkdirAll(path, os.ModePerm)
+	return path, err
 }
 
 func (d *Downloader) spawnWorkers(ctx context.Context, wg *sync.WaitGroup) {
@@ -57,6 +103,17 @@ func (d *Downloader) spawnWorkers(ctx context.Context, wg *sync.WaitGroup) {
 		wg.Add(1)
 		go d.startWorker(ctx, wg)
 	}
+}
+
+func (d *Downloader) setDownloadDir() error {
+	// todo: replace path from Opts
+	path, err := d.makeDir("")
+	if err != nil {
+		log.Printf("[ERROR] can't create folder: %v", err)
+		return err
+	}
+	d.downloadDir = path
+	return err
 }
 
 func (d *Downloader) setQueueFromLinks(links []string) {
@@ -67,7 +124,7 @@ func (d *Downloader) setQueueFromLinks(links []string) {
 	d.queue = make(chan file)
 	go func() {
 		for _, l := range filesLinks {
-			d.queue <- file{l, 0}
+			d.queue <- file{l, d.downloadDir, 0}
 		}
 		close(d.queue)
 	}()
@@ -97,6 +154,18 @@ func (d *Downloader) startWorker(ctx context.Context, wg *sync.WaitGroup) {
 			}
 			// download file
 			log.Printf("[DEBUG] downloading file %s", f.url)
+			err := f.download()
+			if err != nil {
+				log.Printf("[ERROR] can't download or save file %s: %v", f.url, err)
+				if f.retryCount < d.retryLimit {
+					f.retryCount++
+					go func() {
+						d.queue <- f
+					}()
+				}
+				continue
+			}
+			log.Printf("[INFO] %s DONE", f.url)
 		}
 	}
 }

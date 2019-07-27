@@ -63,6 +63,8 @@ func (p *HtmlParser) setExts(exts []string) {
 }
 
 func (p *HtmlParser) parseAll(ctx context.Context) {
+	defer close(p.links)
+
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -91,7 +93,6 @@ func (p *HtmlParser) parsePage(page string) error {
 		return errors.New(fmt.Sprintf("[ERROR] can't get page: %s becouse of: %v", page, err))
 	}
 	p.checkNode(doc, makeDomainName(page))
-	close(p.links)
 	return nil
 }
 
