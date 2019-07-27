@@ -2,6 +2,7 @@ package internal
 
 import (
 	"context"
+	"github.com/cheggaaa/pb/v3"
 	"io"
 	"log"
 	"net/http"
@@ -24,6 +25,7 @@ func NewDownloader(links []string, workersCount int) (*Downloader, error) {
 	}
 	d.setQueueFromLinks(links)
 	d.setWorkersCount(workersCount)
+	d.setProgressBar()
 	return d, nil
 }
 
@@ -74,17 +76,20 @@ func (f *file) save(resp *http.Response) error {
 }
 
 type Downloader struct {
-	queue                    chan file
-	retryLimit, workersCount int
-	downloadDir              string
+	queue                              chan file
+	queueLen, retryLimit, workersCount int
+	downloadDir                        string
+	bar                                *pb.ProgressBar
 }
 
 // DownloadAll is spawn N workers and downloading all file from file chan
 func (d *Downloader) DownloadAll() {
+	d.bar.Start()
 	wg := &sync.WaitGroup{}
 	ctx := context.Background()
 	d.spawnWorkers(ctx, wg)
 	wg.Wait()
+	d.bar.Finish()
 }
 
 func (d *Downloader) makeDir(path string) (string, error) {
@@ -121,6 +126,7 @@ func (d *Downloader) setQueueFromLinks(links []string) {
 	//  there i can got number of files links and use it for
 	//  UI representation (kind of progress bar I guess)
 	filesLinks := NewHtmlParser(links, nil).GetLinks()
+	d.queueLen = len(filesLinks)
 	d.queue = make(chan file)
 	go func() {
 		for _, l := range filesLinks {
@@ -153,7 +159,6 @@ func (d *Downloader) startWorker(ctx context.Context, wg *sync.WaitGroup) {
 				return
 			}
 			// download file
-			log.Printf("[DEBUG] downloading file %s", f.url)
 			err := f.download()
 			if err != nil {
 				log.Printf("[ERROR] can't download or save file %s: %v", f.url, err)
@@ -165,7 +170,11 @@ func (d *Downloader) startWorker(ctx context.Context, wg *sync.WaitGroup) {
 				}
 				continue
 			}
-			log.Printf("[INFO] %s DONE", f.url)
+			d.bar.Increment()
 		}
 	}
+}
+
+func (d *Downloader) setProgressBar() {
+	d.bar = pb.New(d.queueLen)
 }
