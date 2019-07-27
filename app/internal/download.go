@@ -34,25 +34,32 @@ type file struct {
 	retryCount int
 }
 
-func (f *file) download() error {
-	f.retryCount++
-	resp, err := http.Get(f.url)
-	if err != nil {
-		return err
+func (f *file) isExist() bool {
+	if _, err := os.Stat(f.getFilePath()); err != nil {
+		return false
 	}
+	return true
+}
 
-	err = f.save(resp)
-	if err != nil {
-		return err
+func (f *file) download() error {
+	if !f.isExist() {
+		f.retryCount++
+		resp, err := http.Get(f.url)
+		if err != nil {
+			return err
+		}
+
+		err = f.save(resp)
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil
 }
 
 func (f *file) save(resp *http.Response) error {
-	fileName := strings.Split(f.url, "/")
-
-	filePath := filepath.Join(f.path, fileName[len(fileName)-1])
+	filePath := f.getFilePath()
 	file, err := os.Create(filePath)
 	if err != nil {
 		return err
@@ -73,6 +80,11 @@ func (f *file) save(resp *http.Response) error {
 	}
 
 	return nil
+}
+
+func (f *file) getFilePath() string {
+	fileName := strings.Split(f.url, "/")
+	return filepath.Join(f.path, fileName[len(fileName)-1])
 }
 
 type Downloader struct {
