@@ -1,4 +1,4 @@
-package main
+package app
 
 import (
 	"github.com/egregors/sucker/app/internal"
@@ -20,7 +20,5 @@ func main() {
 	log.Printf("Downloading for: %s", strings.Join(links, ", "))
 	dl, _ := internal.NewDownloader(links, 5)
 	dl.DownloadAll()
-
-	// todo: add fancy output
 	log.Print("Done")
 }

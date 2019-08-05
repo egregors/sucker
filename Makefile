@@ -1,5 +1,5 @@
 build:
-	GO111MODULE=on CGO_ENABLED=0 go build -mod=vendor -o sucker ./app/cmd/main.go
+	GO111MODULE=on CGO_ENABLED=0 go build -mod=vendor -o sucker ./app/main.go
 
 clean:
 	rm -rf ./sucker_downloads
