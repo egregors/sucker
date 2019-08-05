@@ -3,12 +3,9 @@ package internal
 import (
 	"context"
 	"github.com/cheggaaa/pb/v3"
-	"io"
 	"log"
-	"net/http"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 )
 
@@ -29,68 +26,11 @@ func NewDownloader(links []string, workersCount int) (*Downloader, error) {
 	return d, nil
 }
 
-type file struct {
-	url, path  string
-	retryCount int
-}
-
-func (f *file) isExist() bool {
-	if _, err := os.Stat(f.getFilePath()); err != nil {
-		return false
-	}
-	return true
-}
-
-func (f *file) download() error {
-	if !f.isExist() {
-		f.retryCount++
-		resp, err := http.Get(f.url)
-		if err != nil {
-			return err
-		}
-
-		err = f.save(resp)
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-func (f *file) save(resp *http.Response) error {
-	filePath := f.getFilePath()
-	file, err := os.Create(filePath)
-	if err != nil {
-		return err
-	}
-
-	if _, err := io.Copy(file, resp.Body); err != nil {
-		return err
-	}
-
-	err = resp.Body.Close()
-	if err != nil {
-		return err
-	}
-
-	err = file.Close()
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func (f *file) getFilePath() string {
-	fileName := strings.Split(f.url, "/")
-	return filepath.Join(f.path, fileName[len(fileName)-1])
-}
-
 type Downloader struct {
-	queue                              chan file
+	queue                              chan *File
 	queueLen, retryLimit, workersCount int
 	downloadDir                        string
+	workers                            []*Worker
 	bar                                *pb.ProgressBar
 }
 
@@ -99,6 +39,7 @@ func (d *Downloader) DownloadAll() {
 	d.bar.Start()
 	wg := &sync.WaitGroup{}
 	ctx := context.Background()
+	d.createWorkers()
 	d.spawnWorkers(ctx, wg)
 	wg.Wait()
 	d.bar.Finish()
@@ -115,10 +56,33 @@ func (d *Downloader) makeDir(path string) (string, error) {
 	return path, err
 }
 
-func (d *Downloader) spawnWorkers(ctx context.Context, wg *sync.WaitGroup) {
+func (d *Downloader) setWorkersCount(n int) {
+	d.workersCount = n
+	if d.workersCount == 0 {
+		d.setWorkersCountDefault()
+	}
+}
+
+func (d *Downloader) setWorkersCountDefault() {
+	// todo: move it into config
+	d.workersCount = 5
+}
+
+func (d *Downloader) createWorkers() {
 	for i := 0; i < d.workersCount; i++ {
+		d.addWorker()
+	}
+}
+
+func (d *Downloader) addWorker() {
+	w := NewWorker(d.queue)
+	d.workers = append(d.workers, w)
+}
+
+func (d *Downloader) spawnWorkers(ctx context.Context, wg *sync.WaitGroup) {
+	for _, w := range d.workers {
 		wg.Add(1)
-		go d.startWorker(ctx, wg)
+		w.start(ctx, wg, d.bar)
 	}
 }
 
@@ -139,52 +103,13 @@ func (d *Downloader) setQueueFromLinks(links []string) {
 	//  UI representation (kind of progress bar I guess)
 	filesLinks := NewHtmlParser(links, nil).GetLinks()
 	d.queueLen = len(filesLinks)
-	d.queue = make(chan file)
+	d.queue = make(chan *File)
 	go func() {
 		for _, l := range filesLinks {
-			d.queue <- file{l, d.downloadDir, 0}
+			d.queue <- NewFile(l, d.downloadDir)
 		}
 		close(d.queue)
 	}()
-}
-
-func (d *Downloader) setWorkersCount(n int) {
-	d.workersCount = n
-	if d.workersCount == 0 {
-		d.setWorkersCountDefault()
-	}
-}
-
-func (d *Downloader) setWorkersCountDefault() {
-	// todo: move it into config
-	d.workersCount = 5
-}
-
-func (d *Downloader) startWorker(ctx context.Context, wg *sync.WaitGroup) {
-	defer wg.Done()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case f, ok := <-d.queue:
-			if !ok {
-				return
-			}
-			// download file
-			err := f.download()
-			if err != nil {
-				log.Printf("[ERROR] can't download or save file %s: %v", f.url, err)
-				if f.retryCount < d.retryLimit {
-					f.retryCount++
-					go func() {
-						d.queue <- f
-					}()
-				}
-				continue
-			}
-			d.bar.Increment()
-		}
-	}
 }
 
 func (d *Downloader) setProgressBar() {
