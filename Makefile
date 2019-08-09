@@ -1,3 +1,7 @@
+.PHONY: build clean test bench
+
+all: build
+
 build:
 	GO111MODULE=on CGO_ENABLED=0 go build -mod=vendor -o sucker ./app/main.go
 
