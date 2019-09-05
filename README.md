@@ -1,8 +1,23 @@
 # sucker
-File sucker
+File sucker – sucks the files
 
-- [x] cli args validation
-- [ ] downloader interface
-- [ ] page parser
-- [ ] retry download if failed
-- [ ] add CI
+## Usage
+
+```
+sucker https://site.com/pages/1.html https://site.com/pages/2.html
+```
+
+## Build
+
+```shell
+make build
+```
+
+## Testing
+
+```shell
+make test
+```
+
+
+

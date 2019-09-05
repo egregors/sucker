@@ -7,7 +7,10 @@ import (
 	"strings"
 )
 
-const version = "0.1"
+const (
+	version      = "0.1"
+	workersCount = 6
+)
 
 func main() {
 	log.Printf("<<<< SUCKER ver: %s", version)
@@ -17,8 +20,8 @@ func main() {
 		log.Fatalf("bad args: %v", err)
 	}
 
-	log.Printf("Downloading for: %s", strings.Join(links, ", "))
-	dl, _ := internal.NewDownloader(links, 5)
+	log.Printf("Downloading for: %s", strings.Join(links, "\n"))
+	dl, _ := internal.NewDownloader(links, workersCount)
 	dl.DownloadAll()
 	log.Print("Done")
 }
