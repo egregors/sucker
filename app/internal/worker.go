@@ -31,10 +31,22 @@ func (w *Worker) start(ctx context.Context, group *sync.WaitGroup, bar *pb.Progr
 				err := file.download()
 				if err != nil {
 					log.Printf("[ERROR] can't download or save file %s: %v", file.downloadLink, err)
+					w.retry(file)
 					continue
 				}
 			}
 			bar.Increment()
 		}
+	}()
+}
+
+func (w *Worker) retry(file *File) {
+	if file.retryCount > file.retryLimit {
+		log.Printf("[ERROR] max retry %d times for %s, skip", file.retryCount, file.fileName)
+	}
+
+	go func() {
+		file.delete()
+		w.queue <- file
 	}()
 }

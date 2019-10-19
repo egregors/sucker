@@ -1,5 +1,5 @@
 # sucker
-File sucker – sucks the files
+File sucker – sucks the files. Files. Files from the Internet.
 
 ## Usage
 

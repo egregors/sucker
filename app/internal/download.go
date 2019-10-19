@@ -13,7 +13,8 @@ import (
 func NewDownloader(links []string, workersCount int) (*Downloader, error) {
 	// todo: looks like i should move all this args into Opts struct, cause it
 	//  too many for func
-	d := &Downloader{}
+	d := new(Downloader)
+	d.retryLimit = 3
 	// todo: crete folder for download
 	err := d.setDownloadDir()
 	if err != nil {
@@ -106,7 +107,7 @@ func (d *Downloader) setQueueFromLinks(links []string) {
 	d.queue = make(chan *File)
 	go func() {
 		for _, l := range filesLinks {
-			d.queue <- NewFile(l, d.downloadDir)
+			d.queue <- NewFile(l, d.downloadDir, d.retryLimit)
 		}
 		close(d.queue)
 	}()

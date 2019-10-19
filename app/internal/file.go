@@ -2,6 +2,7 @@ package internal
 
 import (
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -9,16 +10,17 @@ import (
 )
 
 type File struct {
-	retryCount     int
-	downloadLink   string
-	downloadToPath string
-	fileName       string
+	retryCount, retryLimit int
+	downloadLink           string
+	downloadToPath         string
+	fileName               string
 }
 
-func NewFile(link, path string) *File {
+func NewFile(link, path string, retryLimit int) *File {
 	f := new(File)
 	f.downloadLink = link
 	f.downloadToPath = path
+	f.retryLimit = retryLimit
 	f.fileName = getFileNameFromLink(link)
 	return f
 }
@@ -78,4 +80,13 @@ func (f *File) save(resp *http.Response) error {
 
 func (f *File) getFilePath() string {
 	return filepath.Join(f.downloadToPath, f.fileName)
+}
+
+func (f *File) delete() {
+	if f.isExist() {
+		err := os.Remove(f.getFilePath())
+		if err != nil {
+			log.Printf("[ERROR] can't remove file: %v ", err)
+		}
+	}
 }
