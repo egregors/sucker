@@ -2,6 +2,7 @@ package internal
 
 import (
 	"context"
+	"errors"
 	"github.com/cheggaaa/pb/v3"
 	"log"
 	"os"
@@ -16,14 +17,20 @@ func NewDownloader(links []string, workersCount int) (*Downloader, error) {
 	d := new(Downloader)
 	d.retryLimit = 3
 	// todo: crete folder for download
+	d.setQueueFromLinks(links)
+
+	if d.queueLen == 0 {
+		return nil, errors.New("[WARN] nothing to download [0 links was find]")
+	}
+
+	d.setWorkersCount(workersCount)
+	d.setProgressBar()
 	err := d.setDownloadDir()
 	if err != nil {
 		log.Printf("[ERROR] can't create dir: %v", err)
 		return nil, err
 	}
-	d.setQueueFromLinks(links)
-	d.setWorkersCount(workersCount)
-	d.setProgressBar()
+
 	return d, nil
 }
 

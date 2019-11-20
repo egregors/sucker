@@ -21,7 +21,11 @@ func main() {
 	}
 
 	log.Printf("Downloading for: %s", strings.Join(links, "\n"))
-	dl, _ := internal.NewDownloader(links, workersCount)
+	dl, err := internal.NewDownloader(links, workersCount)
+	if err != nil {
+		log.Printf("[FATAL] can't make downloader: %v", err)
+		os.Exit(0)
+	}
 	dl.DownloadAll()
 	log.Print("Done")
 }
