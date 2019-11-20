@@ -2,6 +2,8 @@ package internal
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"github.com/cheggaaa/pb/v3"
 	"log"
 	"sync"
@@ -9,35 +11,48 @@ import (
 
 type Worker struct {
 	queue chan *File
+	wg    *sync.WaitGroup
+	bar   *pb.ProgressBar
+
+	errorCh chan<- error
+	mux     *sync.Mutex
 }
 
-func NewWorker(queue chan *File) *Worker {
-	w := new(Worker)
-	w.queue = queue
+func NewWorker(queue chan *File, wg *sync.WaitGroup, bar *pb.ProgressBar) *Worker {
+	w := &Worker{
+		queue,
+		wg,
+		bar,
+		nil,
+		new(sync.Mutex),
+	}
 	return w
 }
 
-func (w *Worker) start(ctx context.Context, group *sync.WaitGroup, bar *pb.ProgressBar) {
-	go func() {
-		defer group.Done()
-		for {
-			select {
-			case <-ctx.Done():
+func (w *Worker) start(ctx context.Context, errorCh chan<- error) {
+	defer w.wg.Done()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case file, ok := <-w.queue:
+			if !ok {
 				return
-			case file, ok := <-w.queue:
-				if !ok {
-					return
-				}
-				err := file.download()
-				if err != nil {
-					log.Printf("[ERROR] can't download or save file %s: %v", file.downloadLink, err)
-					w.retry(file)
-					continue
-				}
 			}
-			bar.Increment()
+			err := file.download()
+			if err != nil {
+				errorCh <- errors.New(
+					fmt.Sprintf("[ERROR] can't download or save file %s retry: %d: %v",
+						file.downloadLink,
+						file.retryCount,
+						err),
+				)
+				w.retry(file)
+				continue
+			}
 		}
-	}()
+		w.barIncrement()
+	}
 }
 
 func (w *Worker) retry(file *File) {
@@ -49,4 +64,10 @@ func (w *Worker) retry(file *File) {
 		file.delete()
 		w.queue <- file
 	}()
+}
+
+func (w *Worker) barIncrement() {
+	w.mux.Lock()
+	w.bar.Increment()
+	w.mux.Unlock()
 }

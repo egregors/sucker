@@ -16,7 +16,6 @@ func NewDownloader(links []string, workersCount int) (*Downloader, error) {
 	//  too many for func
 	d := new(Downloader)
 	d.retryLimit = 3
-	// todo: crete folder for download
 	d.setQueueFromLinks(links)
 
 	if d.queueLen == 0 {
@@ -40,17 +39,24 @@ type Downloader struct {
 	downloadDir                        string
 	workers                            []*Worker
 	bar                                *pb.ProgressBar
+	errors                             []error
 }
 
 // DownloadAll is spawn N workers and downloading all file from file chan
 func (d *Downloader) DownloadAll() {
-	d.bar.Start()
 	wg := &sync.WaitGroup{}
-	ctx := context.Background()
-	d.createWorkers()
-	d.spawnWorkers(ctx, wg)
+	ctx, cancel := context.WithCancel(context.Background())
+	errorCh := make(chan error)
+
+	d.bar.Start()
+	d.createWorkers(wg)
+	d.spawnWorkers(ctx, errorCh)
+	d.catchErrors(ctx, errorCh)
 	wg.Wait()
+
 	d.bar.Finish()
+	cancel()
+	d.showErrors()
 }
 
 func (d *Downloader) makeDir(path string) (string, error) {
@@ -76,21 +82,17 @@ func (d *Downloader) setWorkersCountDefault() {
 	d.workersCount = 5
 }
 
-func (d *Downloader) createWorkers() {
+func (d *Downloader) createWorkers(wg *sync.WaitGroup) {
 	for i := 0; i < d.workersCount; i++ {
-		d.addWorker()
+		w := NewWorker(d.queue, wg, d.bar)
+		d.workers = append(d.workers, w)
 	}
 }
 
-func (d *Downloader) addWorker() {
-	w := NewWorker(d.queue)
-	d.workers = append(d.workers, w)
-}
-
-func (d *Downloader) spawnWorkers(ctx context.Context, wg *sync.WaitGroup) {
+func (d *Downloader) spawnWorkers(ctx context.Context, errorCh chan<- error) {
 	for _, w := range d.workers {
-		wg.Add(1)
-		w.start(ctx, wg, d.bar)
+		w.wg.Add(1)
+		go w.start(ctx, errorCh)
 	}
 }
 
@@ -106,9 +108,6 @@ func (d *Downloader) setDownloadDir() error {
 }
 
 func (d *Downloader) setQueueFromLinks(links []string) {
-	// todo: pass exts from outside
-	//  there i can got number of files links and use it for
-	//  UI representation (kind of progress bar I guess)
 	filesLinks := NewHtmlParser(links, nil).GetLinks()
 	d.queueLen = len(filesLinks)
 	d.queue = make(chan *File)
@@ -122,4 +121,30 @@ func (d *Downloader) setQueueFromLinks(links []string) {
 
 func (d *Downloader) setProgressBar() {
 	d.bar = pb.New(d.queueLen)
+}
+
+func (d *Downloader) showErrors() {
+	if len(d.errors) > 0 {
+		log.Printf("[WARN] errors during downloading: %d", len(d.errors))
+		for _, err := range d.errors {
+			log.Println(err)
+		}
+	}
+}
+
+func (d *Downloader) catchErrors(ctx context.Context, errorsCh chan error) {
+	go func() {
+		defer close(errorsCh)
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case e, ok := <-errorsCh:
+				if !ok {
+					return
+				}
+				d.errors = append(d.errors, e)
+			}
+		}
+	}()
 }
