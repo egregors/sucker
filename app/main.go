@@ -1,31 +1,43 @@
 package main
 
 import (
+	"context"
+	"github.com/egregors/sucker/app/downloader"
 	"github.com/egregors/sucker/app/internal"
 	"log"
 	"os"
-	"strings"
 )
 
-const (
-	version      = "0.1"
-	workersCount = 6
-)
+// todo:
+//  - [x] мульти бары для загрузок
+//  - [x] удалять бары, когда загрузилось
+// 	- [ ] ловить interrupt и удалять недокаченое
+//  - [ ] выводить в поплог когда максимальное количество ретраев привышено
+//  - [ ] попрообвать сделать дозагрузку файла на баре после ретрая
+//  - [ ] все таки как то удалять недокаченные файлы
+//  - [x] придумать как сделать общий прогресс бар для всего количества закачек
+//
+//  все еще не понятно, что делать при ктрл - с
 
 func main() {
-	log.Printf("<<<< SUCKER ver: %s", version)
+	// 1. get CLI args
+	// 2. get URLs list
+	// 3. create wg, progress, context
+	// 4. create downloader
+	// 5. start downloading
+	// 6. catch interrupt
 
-	links, err := internal.ParseArgs(os.Args[1:])
+	// get all pages licks from CLI args
+	pageLinks, err := internal.ParseArgs(os.Args[1:])
 	if err != nil {
 		log.Fatalf("bad args: %v", err)
 	}
 
-	log.Printf("Downloading for: %s", strings.Join(links, "\n"))
-	dl, err := internal.NewDownloader(links, workersCount)
+	ctx, _ := context.WithCancel(context.Background())
+
+	d, err := downloader.NewDownloader(ctx, pageLinks)
 	if err != nil {
-		log.Printf("[FATAL] can't make downloader: %v", err)
-		os.Exit(0)
+		panic(err)
 	}
-	dl.DownloadAll()
-	log.Print("Done")
+	d.Run()
 }
