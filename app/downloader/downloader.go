@@ -143,7 +143,7 @@ func (d *Downloader) download(URL *url.URL) {
 		return
 	}
 
-	_, proxyReader := d.makeDownloadBarAndProxyReader(resp, URL)
+	bar, proxyReader := d.makeDownloadBarAndProxyReader(resp, URL)
 
 	downloadToPath, _ := os.Getwd()
 	fileName := getFileNameFromURL(URL.String())
@@ -152,7 +152,11 @@ func (d *Downloader) download(URL *url.URL) {
 	os.MkdirAll(filepath.Join(downloadToPath, "sucker_downloads"), os.ModePerm)
 	file, _ := os.Create(filepath.Join(downloadToPath, "sucker_downloads", fileName))
 
-	io.Copy(file, proxyReader)
+	_, err = io.Copy(file, proxyReader)
+	if err != nil {
+		// todo: try to make retry here
+		bar.Abort(true)
+	}
 
 	d.mainBar.Increment()
 	proxyReader.Close()
