@@ -139,8 +139,9 @@ func (d *Downloader) download(URL *url.URL) {
 
 	downloadToPath, _ := os.Getwd()
 	fileName := getFileNameFromURL(URL.String())
+	filePath := filepath.Join(downloadToPath, "sucker_downloads", fileName)
 
-	if fileExists(filepath.Join(downloadToPath, "sucker_downloads", fileName)) {
+	if fileExists(filePath) {
 		return
 	}
 
@@ -154,8 +155,8 @@ func (d *Downloader) download(URL *url.URL) {
 	bar, proxyReader := d.makeDownloadBarAndProxyReader(resp, URL)
 
 	// TODO: refactor it
-	os.MkdirAll(filepath.Join(downloadToPath, "sucker_downloads"), os.ModePerm)
-	file, _ := os.Create(filepath.Join(downloadToPath, "sucker_downloads", fileName))
+	_ = os.MkdirAll(filepath.Join(downloadToPath, "sucker_downloads"), os.ModePerm)
+	file, _ := os.Create(filePath)
 
 	_, err = io.Copy(file, proxyReader)
 	if err != nil {
@@ -164,8 +165,8 @@ func (d *Downloader) download(URL *url.URL) {
 	}
 
 	d.mainBar.Increment()
-	proxyReader.Close()
-	file.Close()
+	_ = proxyReader.Close()
+	_ = file.Close()
 }
 
 func parseRawURLs(rawURLs []string) (urls []*url.URL, err error) {
