@@ -137,16 +137,21 @@ func (d *Downloader) spawn(fileURLs <-chan *url.URL) {
 
 func (d *Downloader) download(URL *url.URL) {
 
+	downloadToPath, _ := os.Getwd()
+	fileName := getFileNameFromURL(URL.String())
+
+	if fileExists(filepath.Join(downloadToPath, "sucker_downloads", fileName)) {
+		return
+	}
+
 	resp, err := http.Get(URL.String())
+
 	if err != nil {
 		d.mainBar.Increment()
 		return
 	}
 
 	bar, proxyReader := d.makeDownloadBarAndProxyReader(resp, URL)
-
-	downloadToPath, _ := os.Getwd()
-	fileName := getFileNameFromURL(URL.String())
 
 	// TODO: refactor it
 	os.MkdirAll(filepath.Join(downloadToPath, "sucker_downloads"), os.ModePerm)
