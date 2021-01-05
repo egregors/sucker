@@ -106,7 +106,7 @@ func (d *Downloader) makeDownloadBarAndProxyReader(resp *http.Response, URL *url
 	b := d.progress.AddBar(resp.ContentLength, mpb.BarStyle("[=>-|"), // bar for proxy reader
 		mpb.BarOptOn(mpb.BarRemoveOnComplete(), func() bool { return true }), // del bar
 		mpb.PrependDecorators(
-			decor.Name(URL.Path, decor.WCSyncSpaceR),
+			decor.Name(getFileNameFromURL(URL.String()), decor.WCSyncSpaceR),
 			decor.CountersKibiByte("% .2f / % .2f"),
 		),
 		mpb.AppendDecorators(
@@ -197,5 +197,5 @@ func parsePageURLs(pageURLs []string) (fileURLs []*url.URL, err error) {
 
 func getFileNameFromURL(l string) string {
 	n := strings.Split(l, "/")
-	return n[len(n)-1]
+	return strings.Trim(n[len(n)-1], " ")
 }
