@@ -142,6 +142,7 @@ func (d *Downloader) download(URL *url.URL) {
 	filePath := filepath.Join(downloadToPath, "sucker_downloads", fileName)
 
 	if fileExists(filePath) {
+		d.mainBar.Increment()
 		return
 	}
 
