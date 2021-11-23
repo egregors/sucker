@@ -1,9 +1,12 @@
 .PHONY: build clean test bench
 
-all: build
+all: run
+
+run:
+	pbpaste | ./sucker
 
 build:
-	GO111MODULE=on CGO_ENABLED=0 go build -mod=vendor -o sucker ./app/main.go
+	GO111MODULE=on CGO_ENABLED=0 go build -mod=vendor -o sucker .main.go
 
 clean:
 	rm -rf ./sucker_downloads

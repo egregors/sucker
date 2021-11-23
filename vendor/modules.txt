@@ -1,20 +1,20 @@
-# github.com/VividCortex/ewma v1.1.1
+# github.com/VividCortex/ewma v1.2.0
 github.com/VividCortex/ewma
 # github.com/acarl005/stripansi v0.0.0-20180116102854-5a71ef0e047d
 github.com/acarl005/stripansi
-# github.com/go-pkgz/lgr v0.10.4
-github.com/go-pkgz/lgr
-# github.com/mattn/go-runewidth v0.0.9
+# github.com/mattn/go-runewidth v0.0.13
 github.com/mattn/go-runewidth
-# github.com/vbauerster/mpb/v5 v5.4.0
-github.com/vbauerster/mpb/v5
-github.com/vbauerster/mpb/v5/cwriter
-github.com/vbauerster/mpb/v5/decor
-github.com/vbauerster/mpb/v5/internal
-# golang.org/x/net v0.0.0-20201224014010-6772e930b67b
+# github.com/rivo/uniseg v0.2.0
+github.com/rivo/uniseg
+# github.com/vbauerster/mpb/v7 v7.1.5
+github.com/vbauerster/mpb/v7
+github.com/vbauerster/mpb/v7/cwriter
+github.com/vbauerster/mpb/v7/decor
+github.com/vbauerster/mpb/v7/internal
+# golang.org/x/net v0.0.0-20211118161319-6a13c67c3ce4
 golang.org/x/net/html
 golang.org/x/net/html/atom
-# golang.org/x/sys v0.0.0-20201218084310-7d0127a74742
+# golang.org/x/sys v0.0.0-20210910150752-751e447fb3d0
 golang.org/x/sys/internal/unsafeheader
 golang.org/x/sys/unix
 golang.org/x/sys/windows
