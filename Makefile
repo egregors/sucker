@@ -6,7 +6,7 @@ run:
 	pbpaste | ./sucker
 
 build:
-	GO111MODULE=on CGO_ENABLED=0 go build -mod=vendor -o sucker .main.go
+	GO111MODULE=on CGO_ENABLED=0 go build -mod=vendor -o sucker ./main.go
 
 clean:
 	rm -rf ./sucker_downloads
