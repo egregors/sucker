@@ -2,7 +2,10 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"context"
+	"encoding/gob"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -33,6 +36,17 @@ func main() {
 	// search for a links with valid exts
 	links := make(map[string]bool)
 	findLinks(doc, links)
+
+	// load history is possible
+	var seen map[string]struct{}
+	if fileExists("history.gob") {
+		seen, err = loadHistory("history.gob")
+		if err != nil {
+			log.Fatalf("can't load history: %v", err)
+		}
+	} else {
+		seen = make(map[string]struct{})
+	}
 
 	// make a Bar
 	wg := &sync.WaitGroup{}
@@ -78,7 +92,7 @@ func main() {
 					if !ok {
 						return
 					}
-					download(l, progress, mainBar)
+					download(l, progress, mainBar, seen)
 				}
 
 			}
@@ -87,6 +101,47 @@ func main() {
 
 	// wait until end
 	progress.Wait()
+	// save history
+	if seen != nil {
+		err = saveHistory("history.gob", seen)
+		if err != nil {
+			log.Fatalf("can't save history: %v", err)
+		}
+	}
+}
+
+func loadHistory(path string) (map[string]struct{}, error) {
+	f, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("can't read history: %w", err)
+	}
+
+	buf := bytes.NewBuffer(f)
+	decoder := gob.NewDecoder(buf)
+
+	seen := make(map[string]struct{})
+	err = decoder.Decode(&seen)
+	if err != nil {
+		return nil, fmt.Errorf("can't decode history: %w", err)
+	}
+
+	return seen, nil
+}
+
+func saveHistory(path string, seen map[string]struct{}) error {
+	buf := new(bytes.Buffer)
+	encoder := gob.NewEncoder(buf)
+
+	err := encoder.Encode(seen)
+	if err != nil {
+		return fmt.Errorf("can't encode items: %w", err)
+	}
+	err = os.WriteFile(path, buf.Bytes(), 0o600)
+	if err != nil {
+		return fmt.Errorf("can't save history: %w", err)
+	}
+
+	return nil
 }
 
 func fileExists(path string) bool {
@@ -94,12 +149,17 @@ func fileExists(path string) bool {
 	return !os.IsNotExist(err)
 }
 
-func download(link string, p *mpb.Progress, mBar *mpb.Bar) {
+func download(link string, p *mpb.Progress, mBar *mpb.Bar, seen map[string]struct{}) {
 	fileNameParts := strings.Split(link, "/")
 	fileName := fileNameParts[len(fileNameParts)-1]
 	downloadToPath, _ := os.Getwd()
 	filePath := filepath.Join(downloadToPath, "sucker_downloads", fileName)
 	if fileExists(filePath) {
+		mBar.Increment()
+		return
+	}
+
+	if _, ok := seen[filePath]; ok {
 		mBar.Increment()
 		return
 	}
@@ -137,6 +197,7 @@ func download(link string, p *mpb.Progress, mBar *mpb.Bar) {
 	}
 
 	mBar.Increment()
+	seen[filePath] = struct{}{}
 	_ = proxyReader.Close()
 	_ = file.Close()
 }
