@@ -60,7 +60,8 @@ func main() {
 
 	// Use a mutex to protect the main bar total
 	var mainBarMutex sync.Mutex
-	mainBar := progress.Add(int64(len(links)),
+	totalItems := int64(len(links))
+	mainBar := progress.Add(totalItems,
 		mpb.NewBarFiller(mpb.BarStyle().Lbound("╢").Filler("▌").Tip("▌").Padding("░").Rbound("╟")),
 		mpb.PrependDecorators(
 			decor.Name("Total:", decor.WCSyncSpaceR),
@@ -113,7 +114,7 @@ func main() {
 
 	// Start keyboard listener for adding items from clipboard
 	log.Println("Press 'p' to add downloads from clipboard, Ctrl+C to exit")
-	go keyboardListener(ctx, linksChan, &mainBarMutex, mainBar, seen, &seenMutex, &chanMutex, &chanClosed)
+	go keyboardListener(ctx, linksChan, &mainBarMutex, mainBar, &totalItems, seen, &seenMutex, &chanMutex, &chanClosed)
 
 	// wait until end (workers exit when context is cancelled or channel is closed)
 	progress.Wait()
@@ -203,7 +204,7 @@ func ReadClipboard() (string, error) {
 }
 
 // keyboardListener listens for keyboard input and handles adding items from clipboard
-func keyboardListener(ctx context.Context, linksChan chan<- string, mainBarMutex *sync.Mutex, mainBar *mpb.Bar, seen map[string]struct{}, seenMutex *sync.Mutex, chanMutex *sync.Mutex, chanClosed *bool) {
+func keyboardListener(ctx context.Context, linksChan chan<- string, mainBarMutex *sync.Mutex, mainBar *mpb.Bar, totalItems *int64, seen map[string]struct{}, seenMutex *sync.Mutex, chanMutex *sync.Mutex, chanClosed *bool) {
 	// Open /dev/tty to read keyboard input even when stdin is piped
 	tty, err := os.Open("/dev/tty")
 	if err != nil {
@@ -240,14 +241,14 @@ func keyboardListener(ctx context.Context, linksChan chan<- string, mainBarMutex
 			}
 
 			if n > 0 && buf[0] == 'p' {
-				handleClipboardAdd(linksChan, mainBarMutex, mainBar, seen, seenMutex, chanMutex, chanClosed)
+				handleClipboardAdd(linksChan, mainBarMutex, mainBar, totalItems, seen, seenMutex, chanMutex, chanClosed)
 			}
 		}
 	}
 }
 
 // handleClipboardAdd reads clipboard, parses it, and adds new items to the queue
-func handleClipboardAdd(linksChan chan<- string, mainBarMutex *sync.Mutex, mainBar *mpb.Bar, seen map[string]struct{}, seenMutex *sync.Mutex, chanMutex *sync.Mutex, chanClosed *bool) {
+func handleClipboardAdd(linksChan chan<- string, mainBarMutex *sync.Mutex, mainBar *mpb.Bar, totalItems *int64, seen map[string]struct{}, seenMutex *sync.Mutex, chanMutex *sync.Mutex, chanClosed *bool) {
 	clipboardContent, err := ReadClipboard()
 	if err != nil {
 		log.Printf("Failed to read clipboard: %v", err)
@@ -290,10 +291,10 @@ func handleClipboardAdd(linksChan chan<- string, mainBarMutex *sync.Mutex, mainB
 			if !*chanClosed {
 				linksChan <- link
 				addedCount++
-				// Update main bar total - compute new total first to avoid race
+				// Update main bar total using tracked totalItems
 				mainBarMutex.Lock()
-				newTotal := mainBar.Current() + 1
-				mainBar.SetTotal(newTotal, false)
+				*totalItems++
+				mainBar.SetTotal(*totalItems, false)
 				mainBarMutex.Unlock()
 			}
 			chanMutex.Unlock()
