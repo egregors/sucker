@@ -85,6 +85,8 @@ func main() {
 
 	// spawn workers
 	ctx, cancel := context.WithCancel(context.Background())
+	var chanMutex sync.Mutex // Protect channel closure
+	chanClosed := false
 
 	// Setup signal handling for graceful shutdown
 	sigChan := make(chan os.Signal, 1)
@@ -94,7 +96,14 @@ func main() {
 		<-sigChan
 		log.Println("\nShutting down gracefully...")
 		cancel()
-		close(linksChan)
+		// Wait a bit for keyboard listener to exit, then close channel
+		time.Sleep(100 * time.Millisecond)
+		chanMutex.Lock()
+		if !chanClosed {
+			close(linksChan)
+			chanClosed = true
+		}
+		chanMutex.Unlock()
 	}()
 
 	for i := 0; i < 5; i++ {
@@ -104,7 +113,7 @@ func main() {
 
 	// Start keyboard listener for adding items from clipboard
 	log.Println("Press 'p' to add downloads from clipboard, Ctrl+C to exit")
-	go keyboardListener(ctx, linksChan, &mainBarMutex, mainBar, seen, &seenMutex)
+	go keyboardListener(ctx, linksChan, &mainBarMutex, mainBar, seen, &seenMutex, &chanMutex, &chanClosed)
 
 	// wait until end (workers exit when context is cancelled or channel is closed)
 	progress.Wait()
@@ -194,7 +203,7 @@ func ReadClipboard() (string, error) {
 }
 
 // keyboardListener listens for keyboard input and handles adding items from clipboard
-func keyboardListener(ctx context.Context, linksChan chan<- string, mainBarMutex *sync.Mutex, mainBar *mpb.Bar, seen map[string]struct{}, seenMutex *sync.Mutex) {
+func keyboardListener(ctx context.Context, linksChan chan<- string, mainBarMutex *sync.Mutex, mainBar *mpb.Bar, seen map[string]struct{}, seenMutex *sync.Mutex, chanMutex *sync.Mutex, chanClosed *bool) {
 	// Open /dev/tty to read keyboard input even when stdin is piped
 	tty, err := os.Open("/dev/tty")
 	if err != nil {
@@ -221,19 +230,24 @@ func keyboardListener(ctx context.Context, linksChan chan<- string, mainBarMutex
 			tty.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
 			n, err := tty.Read(buf)
 			if err != nil {
-				// Timeout is expected, continue
+				// Check for timeout specifically
+				if os.IsTimeout(err) {
+					continue
+				}
+				// Log other errors but continue
+				log.Printf("Warning: keyboard read error: %v", err)
 				continue
 			}
 
 			if n > 0 && buf[0] == 'p' {
-				handleClipboardAdd(linksChan, mainBarMutex, mainBar, seen, seenMutex)
+				handleClipboardAdd(linksChan, mainBarMutex, mainBar, seen, seenMutex, chanMutex, chanClosed)
 			}
 		}
 	}
 }
 
 // handleClipboardAdd reads clipboard, parses it, and adds new items to the queue
-func handleClipboardAdd(linksChan chan<- string, mainBarMutex *sync.Mutex, mainBar *mpb.Bar, seen map[string]struct{}, seenMutex *sync.Mutex) {
+func handleClipboardAdd(linksChan chan<- string, mainBarMutex *sync.Mutex, mainBar *mpb.Bar, seen map[string]struct{}, seenMutex *sync.Mutex, chanMutex *sync.Mutex, chanClosed *bool) {
 	clipboardContent, err := ReadClipboard()
 	if err != nil {
 		log.Printf("Failed to read clipboard: %v", err)
@@ -271,12 +285,18 @@ func handleClipboardAdd(linksChan chan<- string, mainBarMutex *sync.Mutex, mainB
 		seenMutex.Unlock()
 
 		if !alreadySeen && !fileExists(filePath) {
-			linksChan <- link
-			addedCount++
-			// Update main bar total
-			mainBarMutex.Lock()
-			mainBar.SetTotal(mainBar.Current()+1, false)
-			mainBarMutex.Unlock()
+			// Check if channel is still open before sending
+			chanMutex.Lock()
+			if !*chanClosed {
+				linksChan <- link
+				addedCount++
+				// Update main bar total - compute new total first to avoid race
+				mainBarMutex.Lock()
+				newTotal := mainBar.Current() + 1
+				mainBar.SetTotal(newTotal, false)
+				mainBarMutex.Unlock()
+			}
+			chanMutex.Unlock()
 		}
 	}
 
@@ -348,7 +368,10 @@ func download(link string, p *mpb.Progress, mBar *mpb.Bar, seen map[string]struc
 	resp, err := http.Get(link)
 	if err != nil {
 		log.Printf("[ERROR] can't request %s : %s", link, err)
+		mBar.Increment()
+		return
 	}
+	defer resp.Body.Close()
 
 	bar, proxyReader := func(resp *http.Response, link string) (*mpb.Bar, io.ReadCloser) {
 		b := p.AddBar(
@@ -400,9 +423,19 @@ func findLinks(n *html.Node, acc map[string]bool) {
 }
 
 func isValidExt(l string) bool {
-	exts := []string{"webm", "mp4"}
+	exts := []string{".webm", ".mp4"}
+	// Parse URL to get path component
+	if idx := strings.Index(l, "?"); idx != -1 {
+		l = l[:idx] // Remove query string
+	}
+	if idx := strings.Index(l, "#"); idx != -1 {
+		l = l[:idx] // Remove fragment
+	}
+
+	// Check if URL ends with valid extension
+	lowerURL := strings.ToLower(l)
 	for _, ext := range exts {
-		if strings.Contains(l, ext) {
+		if strings.HasSuffix(lowerURL, ext) {
 			return true
 		}
 	}
