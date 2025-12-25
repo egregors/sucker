@@ -350,8 +350,32 @@ func fileExists(path string) bool {
 func download(link string, p *mpb.Progress, mBar *mpb.Bar, seen map[string]struct{}, seenMutex *sync.Mutex) {
 	fileNameParts := strings.Split(link, "/")
 	fileName := fileNameParts[len(fileNameParts)-1]
+
+	// Sanitize filename to prevent path traversal
+	fileName = filepath.Base(fileName)
+	if fileName == "." || fileName == ".." || fileName == "" {
+		log.Printf("[ERROR] invalid filename in URL: %s", link)
+		mBar.Increment()
+		return
+	}
+
 	downloadToPath, _ := os.Getwd()
 	filePath := filepath.Join(downloadToPath, "sucker_downloads", fileName)
+
+	// Verify the resolved path is still within the intended directory
+	absFilePath, err := filepath.Abs(filePath)
+	if err != nil {
+		log.Printf("[ERROR] failed to resolve path for %s: %v", fileName, err)
+		mBar.Increment()
+		return
+	}
+	absDownloadDir, _ := filepath.Abs(filepath.Join(downloadToPath, "sucker_downloads"))
+	if !strings.HasPrefix(absFilePath, absDownloadDir+string(filepath.Separator)) && absFilePath != absDownloadDir {
+		log.Printf("[ERROR] path traversal attempt detected: %s", link)
+		mBar.Increment()
+		return
+	}
+
 	if fileExists(filePath) {
 		mBar.Increment()
 		return
