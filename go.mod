@@ -5,6 +5,7 @@ go 1.24
 require (
 	github.com/vbauerster/mpb/v7 v7.1.5
 	golang.org/x/net v0.0.0-20211118161319-6a13c67c3ce4
+	golang.org/x/term v0.0.0-20210927222741-03fcf44c2211
 )
 
 require (

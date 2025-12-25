@@ -10,14 +10,19 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
+	"os/signal"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/vbauerster/mpb/v7"
 	"github.com/vbauerster/mpb/v7/decor"
 	"golang.org/x/net/html"
+	"golang.org/x/term"
 )
 
 func main() {
@@ -27,18 +32,15 @@ func main() {
 		log.Fatalf("can't get page: %v", err)
 	}
 
-	// parse HTML page into searchable tree
-	doc, err := html.Parse(strings.NewReader(rawPage))
+	// parse input to get links
+	links, err := ParseInput(rawPage)
 	if err != nil {
-		log.Fatalf("can't parse page: %v", err)
+		log.Fatalf("can't parse input: %v", err)
 	}
-
-	// search for a links with valid exts
-	links := make(map[string]bool)
-	findLinks(doc, links)
 
 	// load history is possible
 	var seen map[string]struct{}
+	var seenMutex sync.Mutex
 	if fileExists("history.gob") {
 		seen, err = loadHistory("history.gob")
 		if err != nil {
@@ -55,6 +57,9 @@ func main() {
 		mpb.WithRefreshRate(180*time.Millisecond),
 		mpb.WithWaitGroup(wg),
 	)
+
+	// Use a mutex to protect the main bar total
+	var mainBarMutex sync.Mutex
 	mainBar := progress.Add(int64(len(links)),
 		mpb.NewBarFiller(mpb.BarStyle().Lbound("╢").Filler("▌").Tip("▌").Padding("░").Rbound("╟")),
 		mpb.PrependDecorators(
@@ -69,44 +74,216 @@ func main() {
 		),
 	)
 
-	// make chan from links list
-	linksChan := make(chan string)
+	// make chan from links list - buffered to allow adding new items
+	linksChan := make(chan string, 100)
+
 	go func() {
 		for k := range links {
 			linksChan <- k
 		}
-		close(linksChan)
 	}()
 
 	// spawn workers
-	ctx := context.Background()
+	ctx, cancel := context.WithCancel(context.Background())
+	
+	// Setup signal handling for graceful shutdown
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+	
+	go func() {
+		<-sigChan
+		log.Println("\nShutting down gracefully...")
+		cancel()
+		close(linksChan)
+	}()
+
 	for i := 0; i < 5; i++ {
 		wg.Add(1)
-		go func(ctx context.Context, wg *sync.WaitGroup, ls <-chan string) {
-			defer wg.Done()
-			for {
-				select {
-				case <-ctx.Done():
-					return
-				case l, ok := <-linksChan:
-					if !ok {
-						return
-					}
-					download(l, progress, mainBar, seen)
-				}
-
-			}
-		}(ctx, wg, linksChan)
+		go worker(ctx, wg, linksChan, progress, mainBar, seen, &seenMutex)
 	}
 
-	// wait until end
+	// Start keyboard listener for adding items from clipboard
+	log.Println("Press 'p' to add downloads from clipboard, Ctrl+C to exit")
+	go keyboardListener(ctx, linksChan, &mainBarMutex, mainBar, seen, &seenMutex)
+
+	// wait until end (workers exit when context is cancelled or channel is closed)
 	progress.Wait()
+
 	// save history
+	seenMutex.Lock()
+	defer seenMutex.Unlock()
 	if seen != nil {
 		err = saveHistory("history.gob", seen)
 		if err != nil {
 			log.Fatalf("can't save history: %v", err)
 		}
+	}
+}
+
+// worker processes download jobs from the queue
+func worker(ctx context.Context, wg *sync.WaitGroup, ls <-chan string, p *mpb.Progress, mBar *mpb.Bar, seen map[string]struct{}, seenMutex *sync.Mutex) {
+	defer wg.Done()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case l, ok := <-ls:
+			if !ok {
+				return
+			}
+			download(l, p, mBar, seen, seenMutex)
+		}
+	}
+}
+
+// ParseInput parses the input text (HTML or plain text with links) and returns a map of valid links
+func ParseInput(text string) (map[string]bool, error) {
+	links := make(map[string]bool)
+
+	// Try to parse as HTML
+	doc, err := html.Parse(strings.NewReader(text))
+	if err == nil {
+		findLinks(doc, links)
+		if len(links) > 0 {
+			return links, nil
+		}
+	}
+
+	// If no HTML links found, try to parse as plain text URLs
+	lines := strings.Split(text, "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		// Check if it looks like a URL and has valid extension
+		if (strings.HasPrefix(line, "http://") || strings.HasPrefix(line, "https://")) && isValidExt(line) {
+			links["_a"+line] = true
+		}
+	}
+
+	return links, nil
+}
+
+// ReadClipboard reads the current clipboard content
+func ReadClipboard() (string, error) {
+	var cmd *exec.Cmd
+
+	switch runtime.GOOS {
+	case "darwin":
+		cmd = exec.Command("pbpaste")
+	case "linux":
+		// Try xclip first, fallback to wl-paste for Wayland
+		if _, err := exec.LookPath("xclip"); err == nil {
+			cmd = exec.Command("xclip", "-selection", "clipboard", "-o")
+		} else if _, err := exec.LookPath("wl-paste"); err == nil {
+			cmd = exec.Command("wl-paste")
+		} else {
+			return "", fmt.Errorf("no clipboard tool found (install xclip or wl-paste)")
+		}
+	default:
+		return "", fmt.Errorf("unsupported platform: %s", runtime.GOOS)
+	}
+
+	output, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("failed to read clipboard: %w", err)
+	}
+
+	return string(output), nil
+}
+
+// keyboardListener listens for keyboard input and handles adding items from clipboard
+func keyboardListener(ctx context.Context, linksChan chan<- string, mainBarMutex *sync.Mutex, mainBar *mpb.Bar, seen map[string]struct{}, seenMutex *sync.Mutex) {
+	// Open /dev/tty to read keyboard input even when stdin is piped
+	tty, err := os.Open("/dev/tty")
+	if err != nil {
+		log.Printf("Warning: failed to open /dev/tty for keyboard input: %v", err)
+		return
+	}
+	defer tty.Close()
+
+	// Set terminal to raw mode to read single keypresses
+	oldState, err := term.MakeRaw(int(tty.Fd()))
+	if err != nil {
+		log.Printf("Warning: failed to enable keyboard listener: %v", err)
+		return
+	}
+	defer term.Restore(int(tty.Fd()), oldState)
+
+	buf := make([]byte, 1)
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+			// Set a read timeout to allow checking ctx.Done()
+			tty.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
+			n, err := tty.Read(buf)
+			if err != nil {
+				// Timeout is expected, continue
+				continue
+			}
+
+			if n > 0 && buf[0] == 'p' {
+				handleClipboardAdd(linksChan, mainBarMutex, mainBar, seen, seenMutex)
+			}
+		}
+	}
+}
+
+// handleClipboardAdd reads clipboard, parses it, and adds new items to the queue
+func handleClipboardAdd(linksChan chan<- string, mainBarMutex *sync.Mutex, mainBar *mpb.Bar, seen map[string]struct{}, seenMutex *sync.Mutex) {
+	clipboardContent, err := ReadClipboard()
+	if err != nil {
+		log.Printf("Failed to read clipboard: %v", err)
+		return
+	}
+
+	if strings.TrimSpace(clipboardContent) == "" {
+		log.Println("Clipboard is empty")
+		return
+	}
+
+	newLinks, err := ParseInput(clipboardContent)
+	if err != nil {
+		log.Printf("Failed to parse clipboard: %v", err)
+		return
+	}
+
+	if len(newLinks) == 0 {
+		log.Println("No valid links found in clipboard")
+		return
+	}
+
+	// Filter out duplicates and add new items
+	addedCount := 0
+	for link := range newLinks {
+		// Check if already in seen or being processed
+		url := strings.TrimPrefix(link, "_a")
+		fileNameParts := strings.Split(url, "/")
+		fileName := fileNameParts[len(fileNameParts)-1]
+		downloadToPath, _ := os.Getwd()
+		filePath := filepath.Join(downloadToPath, "sucker_downloads", fileName)
+
+		seenMutex.Lock()
+		_, alreadySeen := seen[filePath]
+		seenMutex.Unlock()
+
+		if !alreadySeen && !fileExists(filePath) {
+			linksChan <- link
+			addedCount++
+			// Update main bar total
+			mainBarMutex.Lock()
+			mainBar.SetTotal(mainBar.Current()+1, false)
+			mainBarMutex.Unlock()
+		}
+	}
+
+	if addedCount > 0 {
+		log.Printf("Added %d new items from clipboard", addedCount)
+	} else {
+		log.Println("No new items to add (all duplicates)")
 	}
 }
 
@@ -149,7 +326,7 @@ func fileExists(path string) bool {
 	return !os.IsNotExist(err)
 }
 
-func download(link string, p *mpb.Progress, mBar *mpb.Bar, seen map[string]struct{}) {
+func download(link string, p *mpb.Progress, mBar *mpb.Bar, seen map[string]struct{}, seenMutex *sync.Mutex) {
 	fileNameParts := strings.Split(link, "/")
 	fileName := fileNameParts[len(fileNameParts)-1]
 	downloadToPath, _ := os.Getwd()
@@ -159,7 +336,11 @@ func download(link string, p *mpb.Progress, mBar *mpb.Bar, seen map[string]struc
 		return
 	}
 
-	if _, ok := seen[filePath]; ok {
+	seenMutex.Lock()
+	_, alreadySeen := seen[filePath]
+	seenMutex.Unlock()
+
+	if alreadySeen {
 		mBar.Increment()
 		return
 	}
@@ -197,7 +378,9 @@ func download(link string, p *mpb.Progress, mBar *mpb.Bar, seen map[string]struc
 	}
 
 	mBar.Increment()
+	seenMutex.Lock()
 	seen[filePath] = struct{}{}
+	seenMutex.Unlock()
 	_ = proxyReader.Close()
 	_ = file.Close()
 }

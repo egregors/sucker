@@ -13,3 +13,7 @@
 
 # idea
 .idea/
+
+# Build output
+sucker
+sucker_downloads/
