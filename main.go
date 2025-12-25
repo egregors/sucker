@@ -85,11 +85,11 @@ func main() {
 
 	// spawn workers
 	ctx, cancel := context.WithCancel(context.Background())
-	
+
 	// Setup signal handling for graceful shutdown
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
-	
+
 	go func() {
 		<-sigChan
 		log.Println("\nShutting down gracefully...")
