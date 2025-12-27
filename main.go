@@ -39,6 +39,7 @@ func main() {
 
 	// load history is possible
 	var seen map[string]struct{}
+	var seenMutex sync.Mutex
 	if fileExists("history.gob") {
 		seen, err = loadHistory("history.gob")
 		if err != nil {
@@ -92,7 +93,7 @@ func main() {
 					if !ok {
 						return
 					}
-					download(l, progress, mainBar, seen)
+					download(l, progress, mainBar, seen, &seenMutex)
 				}
 
 			}
@@ -103,7 +104,9 @@ func main() {
 	progress.Wait()
 	// save history
 	if seen != nil {
+		seenMutex.Lock()
 		err = saveHistory("history.gob", seen)
+		seenMutex.Unlock()
 		if err != nil {
 			log.Fatalf("can't save history: %v", err)
 		}
@@ -149,7 +152,7 @@ func fileExists(path string) bool {
 	return !os.IsNotExist(err)
 }
 
-func download(link string, p *mpb.Progress, mBar *mpb.Bar, seen map[string]struct{}) {
+func download(link string, p *mpb.Progress, mBar *mpb.Bar, seen map[string]struct{}, seenMutex *sync.Mutex) {
 	fileNameParts := strings.Split(link, "/")
 	fileName := fileNameParts[len(fileNameParts)-1]
 	downloadToPath, _ := os.Getwd()
@@ -159,7 +162,11 @@ func download(link string, p *mpb.Progress, mBar *mpb.Bar, seen map[string]struc
 		return
 	}
 
-	if _, ok := seen[filePath]; ok {
+	seenMutex.Lock()
+	_, alreadySeen := seen[filePath]
+	seenMutex.Unlock()
+	
+	if alreadySeen {
 		mBar.Increment()
 		return
 	}
@@ -197,7 +204,9 @@ func download(link string, p *mpb.Progress, mBar *mpb.Bar, seen map[string]struc
 	}
 
 	mBar.Increment()
+	seenMutex.Lock()
 	seen[filePath] = struct{}{}
+	seenMutex.Unlock()
 	_ = proxyReader.Close()
 	_ = file.Close()
 }
