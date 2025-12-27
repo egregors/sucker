@@ -163,13 +163,14 @@ func download(link string, p *mpb.Progress, mBar *mpb.Bar, seen map[string]struc
 	}
 
 	seenMutex.Lock()
-	_, alreadySeen := seen[filePath]
-	seenMutex.Unlock()
-	
-	if alreadySeen {
+	if _, alreadySeen := seen[filePath]; alreadySeen {
+		seenMutex.Unlock()
 		mBar.Increment()
 		return
 	}
+	// Mark as seen immediately to prevent duplicate downloads
+	seen[filePath] = struct{}{}
+	seenMutex.Unlock()
 
 	resp, err := http.Get(link)
 	if err != nil {
@@ -204,9 +205,6 @@ func download(link string, p *mpb.Progress, mBar *mpb.Bar, seen map[string]struc
 	}
 
 	mBar.Increment()
-	seenMutex.Lock()
-	seen[filePath] = struct{}{}
-	seenMutex.Unlock()
 	_ = proxyReader.Close()
 	_ = file.Close()
 }
