@@ -1,5 +1,10 @@
 .PHONY: build clean test bench
 
+ifneq (,$(wildcard .env))
+include .env
+export
+endif
+
 all: run
 
 run:

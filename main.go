@@ -20,6 +20,8 @@ import (
 	"golang.org/x/net/html"
 )
 
+const defaultBaseURL = "_PUT_BASE_URL_"
+
 func main() {
 	// get HTML from stdin
 	rawPage, err := getInputFromPipe()
@@ -167,6 +169,8 @@ func download(link string, p *mpb.Progress, mBar *mpb.Bar, seen map[string]struc
 	resp, err := http.Get(link)
 	if err != nil {
 		log.Printf("[ERROR] can't request %s : %s", link, err)
+		mBar.Increment()
+		return
 	}
 
 	bar, proxyReader := func(resp *http.Response, link string) (*mpb.Bar, io.ReadCloser) {
@@ -206,14 +210,22 @@ func findLinks(n *html.Node, acc map[string]bool) {
 	if n.Type == html.ElementNode && n.Data == "a" {
 		for _, a := range n.Attr {
 			if a.Key == "href" && isValidExt(a.Val) {
-				// TODO: hide the domain
-				acc["_a"+a.Val] = true
+					base := strings.TrimRight(getBaseURL(), "/")
+					href := strings.TrimLeft(a.Val, "/")
+					acc[base+"/"+href] = true
 			}
 		}
 	}
 	for ch := n.FirstChild; ch != nil; ch = ch.NextSibling {
 		findLinks(ch, acc)
 	}
+}
+
+func getBaseURL() string {
+	if u := strings.TrimSpace(os.Getenv("BASE_URL")); u != "" {
+		return u
+	}
+	return defaultBaseURL
 }
 
 func isValidExt(l string) bool {
