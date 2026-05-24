@@ -49,6 +49,7 @@ func main() {
 	} else {
 		seen = make(map[string]struct{})
 	}
+	seenMu := &sync.Mutex{}
 
 	// make a Bar
 	wg := &sync.WaitGroup{}
@@ -94,7 +95,7 @@ func main() {
 					if !ok {
 						return
 					}
-					download(l, progress, mainBar, seen)
+					download(l, progress, mainBar, seen, seenMu)
 				}
 
 			}
@@ -151,7 +152,7 @@ func fileExists(path string) bool {
 	return !os.IsNotExist(err)
 }
 
-func download(link string, p *mpb.Progress, mBar *mpb.Bar, seen map[string]struct{}) {
+func download(link string, p *mpb.Progress, mBar *mpb.Bar, seen map[string]struct{}, seenMu *sync.Mutex) {
 	fileNameParts := strings.Split(link, "/")
 	fileName := fileNameParts[len(fileNameParts)-1]
 	downloadToPath, _ := os.Getwd()
@@ -161,10 +162,13 @@ func download(link string, p *mpb.Progress, mBar *mpb.Bar, seen map[string]struc
 		return
 	}
 
+	seenMu.Lock()
 	if _, ok := seen[filePath]; ok {
+		seenMu.Unlock()
 		mBar.Increment()
 		return
 	}
+	seenMu.Unlock()
 
 	resp, err := http.Get(link)
 	if err != nil {
@@ -201,7 +205,9 @@ func download(link string, p *mpb.Progress, mBar *mpb.Bar, seen map[string]struc
 	}
 
 	mBar.Increment()
+	seenMu.Lock()
 	seen[filePath] = struct{}{}
+	seenMu.Unlock()
 	_ = proxyReader.Close()
 	_ = file.Close()
 }
