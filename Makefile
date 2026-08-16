@@ -1,4 +1,4 @@
-.PHONY: build clean test bench
+.PHONY: build clean test bench run force
 
 ifneq (,$(wildcard .env))
 include .env
@@ -7,6 +7,9 @@ endif
 
 all: run
 
+force:
+	pbpaste | ./sucker -force
+
 run:
 	pbpaste | ./sucker
 
@@ -14,7 +17,7 @@ build:
 	GO111MODULE=on CGO_ENABLED=0 go build -mod=vendor -o sucker ./main.go
 
 clean:
-	rm -rf ./sucker_downloads
+	rm -rf ./downloads
 
 test:
 	go test -v -count 1 -race -cover ./...

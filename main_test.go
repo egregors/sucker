@@ -47,7 +47,7 @@ func TestDownloadConcurrentSeenAccess(t *testing.T) {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			download(server.URL+"/file-"+strconv.Itoa(i)+".mp4", progress, mainBar, seen, seenMu, &seenCnt)
+			download(server.URL+"/file-"+strconv.Itoa(i)+".mp4", progress, mainBar, seen, seenMu, &seenCnt, false)
 		}(i)
 	}
 

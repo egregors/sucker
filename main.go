@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/gob"
+	"flag"
 	"fmt"
 	"io"
 	"log"
@@ -24,6 +25,14 @@ import (
 const defaultBaseURL = "_PUT_BASE_URL_"
 
 func main() {
+	// parse flags
+	forcePtr := flag.Bool("force", false, "download even if seen")
+	flag.Parse()
+
+	// if *forcePtr {
+	// 	fmt.Println("FORCE")
+	// }
+
 	// get HTML from stdin
 	rawPage, err := getInputFromPipe()
 	if err != nil {
@@ -100,7 +109,7 @@ func main() {
 					if !ok {
 						return
 					}
-					download(l, progress, mainBar, seen, seenMu, &seenCnt)
+					download(l, progress, mainBar, seen, seenMu, &seenCnt, *forcePtr)
 				}
 			}
 		}(ctx, wg, linksChan)
@@ -116,7 +125,7 @@ func main() {
 		}
 	}
 
-	fmt.Printf("Run stats: seen = %d\n", seenCnt.Load())
+	fmt.Printf("Run stats:\n force = %v\n seen = %d\n", *forcePtr, seenCnt.Load())
 }
 
 func loadHistory(path string) (map[string]struct{}, error) {
@@ -158,7 +167,7 @@ func fileExists(path string) bool {
 	return !os.IsNotExist(err)
 }
 
-func download(link string, p *mpb.Progress, mBar *mpb.Bar, seen map[string]struct{}, seenMu *sync.Mutex, seenCnt *atomic.Int32) {
+func download(link string, p *mpb.Progress, mBar *mpb.Bar, seen map[string]struct{}, seenMu *sync.Mutex, seenCnt *atomic.Int32, force bool) {
 	fileNameParts := strings.Split(link, "/")
 	fileName := fileNameParts[len(fileNameParts)-1]
 	downloadToPath, _ := os.Getwd()
@@ -169,14 +178,16 @@ func download(link string, p *mpb.Progress, mBar *mpb.Bar, seen map[string]struc
 		return
 	}
 
-	seenMu.Lock()
-	if _, ok := seen[filePath]; ok {
+	if !force {
+		seenMu.Lock()
+		if _, ok := seen[filePath]; ok {
+			seenMu.Unlock()
+			mBar.Increment()
+			seenCnt.Add(1)
+			return
+		}
 		seenMu.Unlock()
-		mBar.Increment()
-		seenCnt.Add(1)
-		return
 	}
-	seenMu.Unlock()
 
 	resp, err := http.Get(link)
 	if err != nil {
