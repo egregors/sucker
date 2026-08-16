@@ -3,8 +3,14 @@ File sucker – sucks the files. Files. Files from the Internet.
 
 ## Usage
 
+Put BASE_URL in `.enc`. Copy code of web page with links 
+
 ```
-sucker https://site.com/pages/1.html https://site.com/pages/2.html
+# get web page code from buffer and download all, exclude already seen links
+make
+
+# get web page code from buffer and download all
+make force
 ```
 
 ## Build
