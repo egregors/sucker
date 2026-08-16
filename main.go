@@ -162,7 +162,7 @@ func download(link string, p *mpb.Progress, mBar *mpb.Bar, seen map[string]struc
 	fileNameParts := strings.Split(link, "/")
 	fileName := fileNameParts[len(fileNameParts)-1]
 	downloadToPath, _ := os.Getwd()
-	filePath := filepath.Join(downloadToPath, "sucker_downloads", fileName)
+	filePath := filepath.Join(downloadToPath, "downloads", fileName)
 	if fileExists(filePath) {
 		seenCnt.Add(1)
 		mBar.Increment()
@@ -204,7 +204,7 @@ func download(link string, p *mpb.Progress, mBar *mpb.Bar, seen map[string]struc
 		return b, pR
 	}(resp, link)
 
-	_ = os.MkdirAll(filepath.Join(downloadToPath, "sucker_downloads"), os.ModePerm)
+	_ = os.MkdirAll(filepath.Join(downloadToPath, "downloads"), os.ModePerm)
 	file, _ := os.Create(filePath)
 
 	_, err = io.Copy(file, proxyReader)

@@ -59,7 +59,7 @@ func TestDownloadConcurrentSeenAccess(t *testing.T) {
 	}
 
 	for i := 0; i < 10; i++ {
-		filePath := filepath.Join(tempDir, "sucker_downloads", "file-"+strconv.Itoa(i)+".mp4")
+		filePath := filepath.Join(tempDir, "downloads", "file-"+strconv.Itoa(i)+".mp4")
 		if _, err := os.Stat(filePath); err != nil {
 			t.Fatalf("expected downloaded file %q: %v", filePath, err)
 		}
