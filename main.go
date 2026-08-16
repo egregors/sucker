@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/vbauerster/mpb/v7"
@@ -39,7 +40,7 @@ func main() {
 	links := make(map[string]bool)
 	findLinks(doc, links)
 
-	// load history is possible
+	// load history if possible
 	var seen map[string]struct{}
 	if fileExists("history.gob") {
 		seen, err = loadHistory("history.gob")
@@ -51,6 +52,9 @@ func main() {
 	}
 	seenMu := &sync.Mutex{}
 
+	// lets count seen links
+	var seenCnt atomic.Int32
+
 	// make a Bar
 	wg := &sync.WaitGroup{}
 	progress := mpb.New(
@@ -58,7 +62,8 @@ func main() {
 		mpb.WithRefreshRate(180*time.Millisecond),
 		mpb.WithWaitGroup(wg),
 	)
-	mainBar := progress.Add(int64(len(links)),
+	mainBar := progress.Add(
+		int64(len(links)),
 		mpb.NewBarFiller(mpb.BarStyle().Lbound("╢").Filler("▌").Tip("▌").Padding("░").Rbound("╟")),
 		mpb.PrependDecorators(
 			decor.Name("Total:", decor.WCSyncSpaceR),
@@ -95,9 +100,8 @@ func main() {
 					if !ok {
 						return
 					}
-					download(l, progress, mainBar, seen, seenMu)
+					download(l, progress, mainBar, seen, seenMu, &seenCnt)
 				}
-
 			}
 		}(ctx, wg, linksChan)
 	}
@@ -111,6 +115,8 @@ func main() {
 			log.Fatalf("can't save history: %v", err)
 		}
 	}
+
+	fmt.Printf("Run stats: seen = %d\n", seenCnt.Load())
 }
 
 func loadHistory(path string) (map[string]struct{}, error) {
@@ -152,12 +158,13 @@ func fileExists(path string) bool {
 	return !os.IsNotExist(err)
 }
 
-func download(link string, p *mpb.Progress, mBar *mpb.Bar, seen map[string]struct{}, seenMu *sync.Mutex) {
+func download(link string, p *mpb.Progress, mBar *mpb.Bar, seen map[string]struct{}, seenMu *sync.Mutex, seenCnt *atomic.Int32) {
 	fileNameParts := strings.Split(link, "/")
 	fileName := fileNameParts[len(fileNameParts)-1]
 	downloadToPath, _ := os.Getwd()
 	filePath := filepath.Join(downloadToPath, "sucker_downloads", fileName)
 	if fileExists(filePath) {
+		seenCnt.Add(1)
 		mBar.Increment()
 		return
 	}
@@ -166,6 +173,7 @@ func download(link string, p *mpb.Progress, mBar *mpb.Bar, seen map[string]struc
 	if _, ok := seen[filePath]; ok {
 		seenMu.Unlock()
 		mBar.Increment()
+		seenCnt.Add(1)
 		return
 	}
 	seenMu.Unlock()
@@ -216,9 +224,9 @@ func findLinks(n *html.Node, acc map[string]bool) {
 	if n.Type == html.ElementNode && n.Data == "a" {
 		for _, a := range n.Attr {
 			if a.Key == "href" && isValidExt(a.Val) {
-					base := strings.TrimRight(getBaseURL(), "/")
-					href := strings.TrimLeft(a.Val, "/")
-					acc[base+"/"+href] = true
+				base := strings.TrimRight(getBaseURL(), "/")
+				href := strings.TrimLeft(a.Val, "/")
+				acc[base+"/"+href] = true
 			}
 		}
 	}
