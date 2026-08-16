@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/vbauerster/mpb/v7"
@@ -37,6 +38,7 @@ func TestDownloadConcurrentSeenAccess(t *testing.T) {
 
 	seen := make(map[string]struct{})
 	seenMu := &sync.Mutex{}
+	var seenCnt atomic.Int32
 	progress := mpb.New(mpb.WithOutput(io.Discard))
 	mainBar := progress.AddBar(10)
 
@@ -45,7 +47,7 @@ func TestDownloadConcurrentSeenAccess(t *testing.T) {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			download(server.URL+"/file-"+strconv.Itoa(i)+".mp4", progress, mainBar, seen, seenMu)
+			download(server.URL+"/file-"+strconv.Itoa(i)+".mp4", progress, mainBar, seen, seenMu, &seenCnt)
 		}(i)
 	}
 
