@@ -11,7 +11,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/vbauerster/mpb/v7"
+	"github.com/vbauerster/mpb/v8"
 )
 
 func TestDownloadConcurrentSeenAccess(t *testing.T) {

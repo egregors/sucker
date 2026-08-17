@@ -17,8 +17,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/vbauerster/mpb/v7"
-	"github.com/vbauerster/mpb/v7/decor"
+	"github.com/vbauerster/mpb/v8"
+	"github.com/vbauerster/mpb/v8/decor"
 	"golang.org/x/net/html"
 )
 
@@ -71,9 +71,9 @@ func main() {
 		mpb.WithRefreshRate(180*time.Millisecond),
 		mpb.WithWaitGroup(wg),
 	)
-	mainBar := progress.Add(
+	mainBar := progress.New(
 		int64(len(links)),
-		mpb.NewBarFiller(mpb.BarStyle().Lbound("╢").Filler("▌").Tip("▌").Padding("░").Rbound("╟")),
+		mpb.BarStyle().Lbound("╢").Filler("▌").Tip("▌").Padding("░").Rbound("╟"),
 		mpb.PrependDecorators(
 			decor.Name("Total:", decor.WCSyncSpaceR),
 			decor.CountersNoUnit("%d / %d", decor.WCSyncSpaceR),
@@ -208,7 +208,7 @@ func download(link string, p *mpb.Progress, mBar *mpb.Bar, seen map[string]struc
 			mpb.AppendDecorators(
 				decor.EwmaETA(decor.ET_STYLE_GO, 90),
 				decor.Name(" ] "),
-				decor.EwmaSpeed(decor.UnitKiB, "% .2f", 60),
+				decor.EwmaSpeed(decor.SizeB1024(0), "% .2f", 60),
 			),
 		)
 		pR := b.ProxyReader(resp.Body)
