@@ -97,7 +97,7 @@ func main() {
 
 	// spawn workers
 	ctx := context.Background()
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		wg.Add(1)
 		go func(ctx context.Context, wg *sync.WaitGroup, ls <-chan string) {
 			defer wg.Done()
@@ -267,7 +267,7 @@ func getInputFromPipe() (string, error) {
 	nBytes, nChunks := int64(0), int64(0)
 	r := bufio.NewReader(os.Stdin)
 	buf := make([]byte, 0, 128*1024)
-	var res string
+	sb := strings.Builder{}
 
 	for {
 		n, err := r.Read(buf[:cap(buf)])
@@ -286,12 +286,12 @@ func getInputFromPipe() (string, error) {
 		nChunks++
 		nBytes += int64(len(buf))
 
-		res += string(buf)
+		sb.Write(buf)
 
 		if err != nil && err != io.EOF {
 			return "", nil
 		}
 	}
 
-	return res, nil
+	return sb.String(), nil
 }
