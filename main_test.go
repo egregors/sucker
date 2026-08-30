@@ -43,7 +43,7 @@ func TestDownloadConcurrentSeenAccess(t *testing.T) {
 	mainBar := progress.AddBar(10)
 
 	var wg sync.WaitGroup
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
@@ -58,7 +58,7 @@ func TestDownloadConcurrentSeenAccess(t *testing.T) {
 		t.Fatalf("seen entries = %d, want 10", got)
 	}
 
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		filePath := filepath.Join(tempDir, "downloads", "file-"+strconv.Itoa(i)+".mp4")
 		if _, err := os.Stat(filePath); err != nil {
 			t.Fatalf("expected downloaded file %q: %v", filePath, err)
