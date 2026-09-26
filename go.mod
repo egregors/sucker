@@ -1,6 +1,6 @@
 module github.com/egregors/sucker
 
-go 1.25.0
+go 1.27.0
 
 require (
 	github.com/vbauerster/mpb/v8 v8.12.1
@@ -12,5 +12,5 @@ require (
 	github.com/acarl005/stripansi v0.0.0-20180116102854-5a71ef0e047d // indirect
 	github.com/clipperhouse/uax29/v2 v2.7.0 // indirect
 	github.com/mattn/go-runewidth v0.0.23 // indirect
-	golang.org/x/sys v0.44.0 // indirect
+	golang.org/x/sys v0.48.0 // indirect
 )

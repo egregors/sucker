@@ -29,10 +29,6 @@ func main() {
 	forcePtr := flag.Bool("force", false, "download even if seen")
 	flag.Parse()
 
-	// if *forcePtr {
-	// 	fmt.Println("FORCE")
-	// }
-
 	// get HTML from stdin
 	rawPage, err := getInputFromPipe()
 	if err != nil {
@@ -197,12 +193,14 @@ func download(link string, p *mpb.Progress, mBar *mpb.Bar, seen map[string]struc
 	}
 
 	bar, proxyReader := func(resp *http.Response, link string) (*mpb.Bar, io.ReadCloser) {
+		_, label, _ := strings.CutLast(link, "/")
 		b := p.AddBar(
 			resp.ContentLength,
 			mpb.BarFillerClearOnComplete(),
 			mpb.BarOptOn(mpb.BarRemoveOnComplete(), func() bool { return true }), // del bar
 			mpb.PrependDecorators(
-				decor.Name(link, decor.WCSyncSpaceR),
+				// todo: show only filename, not the whole link. it should be a new func for it
+				decor.Name(label, decor.WCSyncSpaceR),
 				decor.CountersKibiByte("% .2f / % .2f"),
 			),
 			mpb.AppendDecorators(
