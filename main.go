@@ -83,6 +83,10 @@ func main() {
 	)
 
 	// make chan from links list
+	if len(links) == 0 {
+		log.Println("No links")
+		return
+	}
 	linksChan := make(chan string)
 	go func() {
 		for k := range links {
